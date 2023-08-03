@@ -1,23 +1,38 @@
 import 'package:flutter/material.dart';
-
-import '../data.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import '../task.dart';
+import '../taskdata.dart';
 
 class Home extends StatefulWidget {
-  Home({Key? key}) : super(key: key);
+  const Home({Key? key}) : super(key: key);
 
   @override
   State<Home> createState() => _HomeState();
 }
 
 class _HomeState extends State<Home> {
-  final taskList = Task.taskList();
-  List<Task> _foundTask = [];
+  DataBase db = DataBase();
+  final _myBox = Hive.box('mybox');
+  final _reset = Hive.box('mybox');
   final _taskInput = TextEditingController();
-
+  DateTime now = DateTime.now();
   @override
   void initState() {
-    _foundTask = taskList;
+    if (_myBox.get("TASKLIST") == null) {
+      db.createInitialData();
+    } else {
+      db.loadData();
+    }
+    if (_reset.get("TIME") != null) {
+      DateTime prev = _reset.get("TIME");
+      DateTime next = DateTime(prev.year, prev.month, prev.day + 1);
+      if (now.isAfter(next)) {
+        db.resetall();
+        _reset.put("TIME", now);
+      }
+    } else {
+      _reset.put("TIME", now);
+    }
     super.initState();
   }
 
@@ -31,7 +46,7 @@ class _HomeState extends State<Home> {
           Container(
             padding: EdgeInsets.symmetric(
               horizontal: 20,
-              vertical: 15,
+              vertical: 5,
             ),
             child: Column(
               children: [
@@ -41,7 +56,7 @@ class _HomeState extends State<Home> {
                     children: [
                       Container(
                         margin: EdgeInsets.only(
-                          top: 50,
+                          top: 30,
                           bottom: 20,
                         ),
                         child: Text(
@@ -52,11 +67,22 @@ class _HomeState extends State<Home> {
                           ),
                         ),
                       ),
-                      for (Task taskk in _foundTask.reversed)
+                      for (int i = 0; i < db.dbList.length; i++)
                         TaskItem(
-                          task: taskk,
-                          onTaskChanged: _handleTaskChange,
-                          onDeleteItem: _deleteTaskItem,
+                          taskName: db.dbList[i][0],
+                          taskCompleted: db.dbList[i][1],
+                          onTaskChanged: () {
+                            setState(() {
+                              db.dbList[i][1] = !db.dbList[i][1];
+                            });
+                            db.updateDataBase();
+                          },
+                          onDeleteItem: () {
+                            setState(() {
+                              db.dbList.removeAt(i);
+                            });
+                            db.updateDataBase();
+                          },
                         ),
                     ],
                   ),
@@ -128,42 +154,33 @@ class _HomeState extends State<Home> {
     );
   }
 
-  void _handleTaskChange(Task task) {
-    setState(() {
-      task.isDone = !task.isDone;
-    });
-  }
-
-  void _deleteTaskItem(String id) {
-    setState(() {
-      taskList.removeWhere((item) => item.id == id);
-    });
-  }
-
   void _addTaskItem(String inputTask) {
-    setState(() {
-      taskList.add(Task(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        taskText: inputTask,
-      ));
-    });
+    if (inputTask.isNotEmpty) {
+      setState(() {
+        db.dbList.add([inputTask, false]);
+      });
+    }
+
+    db.updateDataBase();
     _taskInput.clear();
   }
 
   void _runFilter(String enteredKeyword) {
-    List<Task> results = [];
+    List results = [];
     if (enteredKeyword.isEmpty) {
-      results = taskList;
+      results = _myBox.get("TASKLIST");
     } else {
-      results = taskList
-          .where((item) => item.taskText! //change
-              .toLowerCase()
-              .contains(enteredKeyword.toLowerCase()))
-          .toList();
+      for (int i = 0; i < db.dbList.length; i++) {
+        if (db.dbList[i][0]
+            .toLowerCase()
+            .contains(enteredKeyword.toLowerCase())) {
+          results.add(db.dbList[i]);
+        }
+      }
     }
 
     setState(() {
-      _foundTask = results;
+      db.dbList = results;
     });
   }
 
@@ -200,18 +217,16 @@ class _HomeState extends State<Home> {
       backgroundColor: Color(0xFFEEEFF5),
       elevation: 0,
       title: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-        Icon(
-          Icons.menu,
-          color: Color(0xFF3A3A3A),
-          size: 30,
-        ),
-        Container(
-          height: 40,
-          width: 40,
-          // child: ClipRRect(
-          //   borderRadius: BorderRadius.circular(20),
-          //   child: Image.asset('assets/images/avatar.jpeg'),
-          // ),
+        IconButton(
+          color: Colors.black,
+          iconSize: 28,
+          icon: Icon(Icons.info),
+          onPressed: () {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text("App Dev Workshop by Frosh x CCS"),
+              duration: Duration(seconds: 2),
+            ));
+          },
         ),
       ]),
     );
